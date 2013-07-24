@@ -16,7 +16,9 @@
 package plsa
 
 import (
+	"math"
 	"math/rand"
+	"log"
 )
 
 // DocWordFreqRetriever is the interface that wraps the basic
@@ -27,12 +29,12 @@ import (
 // and returns true on success, false otherwise.
 //
 // CorpusIds retrieves the entire list of document ids in the training
-// corpus and stores the result in docIds.
+// corpus.
 //
 // CorpusSize returns the number of documents in the training set.
 //
 // Vocabulary retrieves the entire list of words, i.e. the vocabulary in
-// the training corpus and stores the result in words.
+// the training corpus.
 //
 // VocabularySize returns the total number of different words in the training
 // set.
@@ -41,16 +43,16 @@ import (
 // indexed by the given docId.
 type DocWordFreqRetriever interface {
 	LoadFromFile(docWordFreqFile string) bool
-	CorpusIds(docIds []string)
+	CorpusIds() []string
 	CorpusSize() int
-	Vocabulary(words []string)
+	Vocabulary() []string
 	VocabularySize() int
 	DocWordCount(docId, word string) uint64
 }
 
 // Model holds the PLSA model data.
 type Model struct {
-	topicProb      []float32            //topic probability, P(z)
+	topicProb     []float32            //topic probability, P(z)
 	docTopicProb  []map[string]float32 //document probability given topic, P(d|z)
 	wordTopicProb []map[string]float32 //word probability given topic, P(w|z)
 }
@@ -105,87 +107,151 @@ func (model *Model) DocProbabilityGivenTopic(docId string, topicId int) float32 
 
 // TrainingParameter holds the parameter for training a PLSA model.
 type TrainingParameter struct {
-	NumberOfTopics	int
-}
-
-type docIdWord struct {
-	docId	string
-	word	string
+	NumberOfTopics     int     // Number of topics in the PLSA model.
+	LikelihoodIncLimit float32 // Minimum likelihood increment reached in training before stopping.
+	MaxIteration       int     //Maximum number of steps in the EM training procedure.
 }
 
 // TrainFromData trains a PLSA model from the given document word frequency
 // data using the given training parameter..
-func TrainFromData(docWordFreq DocWordFreqRetriever, parameter *TrainingParameter) *Model {
-	numTopics := parameter.NumberOfTopics
+func TrainFromData(docWordFreq DocWordFreqRetriever, param *TrainingParameter) *Model {
+	var m Model
+	// EM algorithm for training PLSA model.
+	probZgivenDW := (&m).randomInit(docWordFreq, param)
+
+	log.Printf("EM training begin: %v.\n", *param)
+	prev_likelihood := float32(0)
+	iter := 0
+	for {
+		(&m).eStep(docWordFreq, probZgivenDW)
+		(&m).mStep(docWordFreq, probZgivenDW)
+		
+		likelihood := (&m).Likelihood(docWordFreq)
+		likelihood_improvement := math.Abs(float64((likelihood-prev_likelihood)/prev_likelihood))
+		
+		log.Printf("Iteration: %d, likelihood: %f, improvement: %f\n", 
+			iter, likelihood, likelihood_improvement)
+		
+		if likelihood_improvement < float64(param.LikelihoodIncLimit) {
+			break
+		} else {
+			prev_likelihood = likelihood
+		}
+		if iter >= param.MaxIteration {
+			break
+		}
+	}
+	log.Printf("EM training end.\n")
+	
+	return &m
+}
+
+type docIdWord struct {
+	docId string
+	word  string
+}
+
+func (m *Model) randomInit(docWordFreq DocWordFreqRetriever, param *TrainingParameter) []map[docIdWord]float32 {
+	numTopics := param.NumberOfTopics
 	numDocs := docWordFreq.CorpusSize()
 	numWords := docWordFreq.VocabularySize()
-	var docIds []string
-	var words []string
-	docWordFreq.CorpusIds(docIds)
-	docWordFreq.Vocabulary(words)
+	docIds := docWordFreq.CorpusIds()
+	words := docWordFreq.Vocabulary()
 	
-	var m Model
-	m.topicProb = make([]float32, numTopics)
-	for z, _ := range m.topicProb {
-		m.topicProb[z] = float32(1)/float32(numTopics)
+	(*m).topicProb = make([]float32, numTopics)
+	for z, _ := range (*m).topicProb {
+		(*m).topicProb[z] = float32(1) / float32(numTopics)
 	}
-	m.docTopicProb = make([]map[string]float32, numTopics)
-	for z, _ := range m.docTopicProb {
-		m.docTopicProb[z] = make(map[string]float32, numDocs)
+	(*m).docTopicProb = make([]map[string]float32, numTopics)
+	for z, _ := range (*m).docTopicProb {
+		(*m).docTopicProb[z] = make(map[string]float32, numDocs)
 		for _, d := range docIds {
-			m.docTopicProb[z][d] = rand.Float32()
+			(*m).docTopicProb[z][d] = rand.Float32()
 		}
 	}
-	m.wordTopicProb = make([]map[string]float32, numTopics)
-	for z, _ := range m.wordTopicProb {
-		m.wordTopicProb[z] = make(map[string]float32, numWords)
+	(*m).wordTopicProb = make([]map[string]float32, numTopics)
+	for z, _ := range (*m).wordTopicProb {
+		(*m).wordTopicProb[z] = make(map[string]float32, numWords)
 		for _, w := range words {
-			m.wordTopicProb[z][w] = rand.Float32()
+			(*m).wordTopicProb[z][w] = rand.Float32()
 		}
 	}
-	
-	// EM algorithm for training PLSA model.
+
 	probZgivenDW := make([]map[docIdWord]float32, numTopics)
 	for i, _ := range probZgivenDW {
 		probZgivenDW[i] = make(map[docIdWord]float32, numDocs*numWords)
 	}
-	for {//TODO(weidoliang): add convergence test
-		// E-step
-		norm_constant := float32(0)
-		for iter := 0; iter < 2; iter++ {
-			for z := 0; z < numTopics; z++ {
-				for _, w := range words {
-					for _, d := range docIds {
-						if iter < 1 {
-							p := m.topicProb[z] * m.docTopicProb[z][d] * m.wordTopicProb[z][w]
-							probZgivenDW[z][docIdWord{d, w}] = p
-							norm_constant += p
-						} else {
-							probZgivenDW[z][docIdWord{d, w}] /= norm_constant
-						}
+	return probZgivenDW
+}
+
+func (m *Model) eStep(docWordFreq DocWordFreqRetriever, probZgivenDW[]map[docIdWord]float32) {
+	docIds := docWordFreq.CorpusIds()
+	words := docWordFreq.Vocabulary()
+	numTopics := m.NumberOfTopics()
+	
+	norm_constant := float32(0)
+	for iter := 0; iter < 2; iter++ {
+		for z := 0; z < numTopics; z++ {
+			for _, w := range words {
+				for _, d := range docIds {
+					if iter < 1 {
+						p := m.TopicProbability(z) * m.DocProbabilityGivenTopic(d, z) * m.WordProbabilityGivenTopic(w, z)
+						probZgivenDW[z][docIdWord{d, w}] = p
+						norm_constant += p
+					} else {
+						probZgivenDW[z][docIdWord{d, w}] /= norm_constant
 					}
 				}
 			}
 		}
-		// M-step
-		for z := 0; z < numTopics; z++ {
+	}
+}
+
+func (m *Model) mStep(docWordFreq DocWordFreqRetriever, probZgivenDW[]map[docIdWord]float32) {
+	docIds := docWordFreq.CorpusIds()
+	words := docWordFreq.Vocabulary()
+	numTopics := m.NumberOfTopics()
+	
+	for z := 0; z < numTopics; z++ {
+		for _, w := range words {
+			p_w_z := float32(0)
+			for _, d := range docIds {
+				p_w_z += float32(docWordFreq.DocWordCount(d, w)) * probZgivenDW[z][docIdWord{d, w}]
+			}
+			(*m).wordTopicProb[z][w] = p_w_z
+		}
+		p_z := float32(0)
+		for _, d := range words {
+			p_d_z := float32(0)
 			for _, w := range words {
-				p_w_z := float32(0)
-				for _, d := range docIds {
-					p_w_z += float32(docWordFreq.DocWordCount(d, w)) * probZgivenDW[z][docIdWord{d, w}]
-				}
-				m.wordTopicProb[z][w] = p_w_z
+				p_d_z += float32(docWordFreq.DocWordCount(d, w)) * probZgivenDW[z][docIdWord{d, w}]
 			}
-			p_z := float32(0)
-			for _, d := range words {
-				p_d_z := float32(0)
-				for _, w := range words {
-					p_d_z += float32(docWordFreq.DocWordCount(d, w)) * probZgivenDW[z][docIdWord{d, w}]
+			(*m).docTopicProb[z][d] = p_d_z
+			p_z += p_d_z
+		}
+		(*m).topicProb[z] = p_z
+	}
+}
+
+// Likelihood computes the log likelihood of reconstruction of data from
+// docWordFreq using the current model.
+func (m *Model) Likelihood(docWordFreq DocWordFreqRetriever) float32 {
+	docIds := docWordFreq.CorpusIds()
+	words := docWordFreq.Vocabulary()
+	numTopics := m.NumberOfTopics()
+
+	likelihood := float64(0)
+	for _, d := range docIds {
+		for _, w := range words {
+			count := docWordFreq.DocWordCount(d, w)
+			if count > 0 {
+				p_d_w := float32(0)
+				for z := 0; z < numTopics; z++ {
+					p_d_w += m.WordProbabilityGivenTopic(w, z) * m.DocProbabilityGivenTopic(d, z)
 				}
-				m.docTopicProb[z][d] = p_d_z
-				p_z += p_d_z
+				likelihood += float64(count) * math.Log(float64(p_d_w))
 			}
-			m.topicProb[z] = p_z
 		}
 	}
+	return float32(likelihood)
 }
