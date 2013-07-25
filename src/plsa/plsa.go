@@ -12,7 +12,8 @@
 //
 // Please refer to the following for details of the PLSA model
 // and related implementation details:
-// Probabilistic Latent Semantic Analysis by Thomas Hofmann.
+// 	Probabilistic Latent Semantic Analysis by Thomas Hofmann.
+// 	External Evaluation of Topic Models by David Newman, Sarvnaz Karimi, Lawrence Cavedon
 package plsa
 
 import (
@@ -77,9 +78,8 @@ func (model *Model) NumberOfTopics() int {
 func (model *Model) TopicProbability(topicId int) float32 {
 	if topicId < len(model.topicProb) {
 		return model.topicProb[topicId]
-	} else {
-		return float32(0)
-	}
+	} 
+	return float32(0)
 }
 
 // WordProbabilityGivenTopic returns the probability of the given word
@@ -88,9 +88,8 @@ func (model *Model) TopicProbability(topicId int) float32 {
 func (model *Model) WordProbabilityGivenTopic(word string, topicId int) float32 {
 	if topicId < len(model.wordTopicProb) {
 		return model.wordTopicProb[topicId][word]
-	} else {
-		return float32(0)
 	}
+	return float32(0)
 }
 
 // DocProbabilityGivenTopic returns the probability of the given document
@@ -100,9 +99,8 @@ func (model *Model) WordProbabilityGivenTopic(word string, topicId int) float32 
 func (model *Model) DocProbabilityGivenTopic(docId string, topicId int) float32 {
 	if topicId < len(model.docTopicProb) {
 		return model.docTopicProb[topicId][docId]
-	} else {
-		return float32(0)
 	}
+	return float32(0)
 }
 
 // TrainingParameter holds the parameter for training a PLSA model.
