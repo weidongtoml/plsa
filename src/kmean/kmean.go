@@ -6,7 +6,7 @@
 // The kmean++ cluster algorithm starts by choosing the k initial centers using
 // the following procedure:
 //   1. Choose one center uniformly at random from among the data points.
-//   2. For each data point x, compute D(x), the distane between x and the 
+//   2. For each data point x, compute D(x), the distane between x and the
 //      nearest center that has been chosen.
 //   3. Choose one new data point at random as a new center, using a weighted
 //      probability distribution where a point x is chosen with probability
@@ -27,18 +27,22 @@ import (
 	"math/rand"
 )
 
+// Interface SampleContainer represents one data sample.
 type SampleContainer interface {
 	String() string
 	DistanceFrom(SampleContainer) float64
 }
 
+// Interface SampleSupplier specifies methods for accessing data samples and
+// different calculations based on array of samples.
 type SampleSupplier interface {
 	SampleSize() int
 	Sample(int) SampleContainer
-	NewSample() SampleContainer
 	Mean([]SampleContainer) SampleContainer
+	Equals([]SampleContainer, []SampleContainer) bool
 }
 
+// Representation of a cluster.
 type Cluster struct {
 	Centroid SampleContainer
 	Members  []SampleContainer
@@ -50,8 +54,14 @@ type indexDist struct {
 }
 
 // Function KMeanCluster clusters the given sample into k clusters.
-func KMeanCluster(s SampleSupplier, k int) *[]Cluster {
+func KMeanCluster(s SampleSupplier, k int) []Cluster {
 	//Use kmean++ to select the k initial centers.
+	clusters := kMeanPlusPlus(s, k)
+	// Use kmean to adjust the clusters till no re-assignment has been made.
+	return kMean(s, clusters)
+}
+
+func kMeanPlusPlus(s SampleSupplier, k int) []Cluster {
 	var clusters []Cluster
 	ind := rand.Int() % s.SampleSize()
 	clusters = append(clusters, Cluster{s.Sample(ind), nil})
@@ -59,7 +69,7 @@ func KMeanCluster(s SampleSupplier, k int) *[]Cluster {
 	for i := 1; i < k; i++ {
 		var indexD []indexDist
 		for sIndex := 0; sIndex < s.SampleSize(); sIndex++ {
-			if indList[sIndex] == false {
+			if !indList[sIndex] {
 				sample := s.Sample(sIndex)
 				shortestDist := math.MaxFloat64
 				for _, c := range clusters {
@@ -82,7 +92,54 @@ func KMeanCluster(s SampleSupplier, k int) *[]Cluster {
 			}
 		}
 	}
-	// Use kmean to adjust the clusters till no re-assignment has been made.
+	return clusters
+}
 
-	return &clusters
+func kMean(s SampleSupplier, clusters []Cluster) []Cluster {
+	for {
+		newClusters := cloneClusterCentroids(clusters)
+		//1. Assignment
+		for i := 0; i < s.SampleSize(); i++ {
+			sample := s.Sample(i)
+			index := 0
+			dist := math.MaxFloat64
+			for j, c := range clusters {
+				if cDist := sample.DistanceFrom(c.Centroid); dist < cDist {
+					dist = cDist
+					index = j
+				}
+			}
+			newClusters[index].add(sample)
+		}
+		//2. update
+		for _, c := range newClusters {
+			c.Centroid = s.Mean(c.Members)
+		}
+		//Check for convergence
+		clustersAreEqual := true
+		for i, _ := range newClusters {
+			if !s.Equals(newClusters[i].Members, clusters[i].Members) {
+				clustersAreEqual = false
+				break
+			}
+		}
+		if clustersAreEqual {
+			break
+		} else {
+			clusters = newClusters
+		}
+	}
+	return clusters
+}
+
+func cloneClusterCentroids(clusters []Cluster) []Cluster {
+	var newCluster []Cluster
+	for _, c := range clusters {
+		newCluster = append(newCluster, Cluster{c.Centroid, nil})
+	}
+	return newCluster
+}
+
+func (cluster *Cluster) add(sample SampleContainer) {
+	cluster.Members = append(cluster.Members, sample)
 }
