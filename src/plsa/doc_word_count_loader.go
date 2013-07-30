@@ -1,19 +1,23 @@
+// Copyright 2013 Weidong Liang. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
 package plsa
 
 import (
-	"os"
 	"bufio"
-	"log"
-	"strings"
-	"strconv"
-	"fmt"
 	"errors"
+	"fmt"
+	"log"
+	"os"
+	"strconv"
+	"strings"
 )
 
 type LineFieldExtractor func(string) (docId, word string, count uint64, err error)
 
-func SimpleLineFieldExtractor (docWordSep, wordCountSep string) LineFieldExtractor {
-	return func(line string)  (docId, word string, count uint64, err error){
+func SimpleLineFieldExtractor(docWordSep, wordCountSep string) LineFieldExtractor {
+	return func(line string) (docId, word string, count uint64, err error) {
 		tokens := strings.SplitN(line, docWordSep, 1)
 		if len(tokens) != 2 {
 			err = errors.New(fmt.Sprintf("Cannot split [%s] to two fields using docWordSep[%s]", line, docWordSep))
@@ -38,7 +42,7 @@ type LineOrientedLoader struct {
 	extractor LineFieldExtractor
 }
 
-func NewLineOrientedLoader (extactor_func LineFieldExtractor) *LineOrientedLoader {
+func NewLineOrientedLoader(extactor_func LineFieldExtractor) *LineOrientedLoader {
 	var loader LineOrientedLoader
 	loader.extractor = extactor_func
 	return &loader
@@ -47,10 +51,10 @@ func NewLineOrientedLoader (extactor_func LineFieldExtractor) *LineOrientedLoade
 func (loader *LineOrientedLoader) LoadFromFile(docWordFreqFile string) bool {
 	fd, err := os.Open(docWordFreqFile)
 	if err != nil {
-		log.Printf("LineOrientedLoader.LoadFromFile(%s) failed: %s", docWordFreqFile, err);
-		return false;
+		log.Printf("LineOrientedLoader.LoadFromFile(%s) failed: %s", docWordFreqFile, err)
+		return false
 	}
-	
+
 	reader := bufio.NewReader(fd)
 	vocabMap := make(map[string]bool)
 	docIdMap := make(map[string]bool)
@@ -64,23 +68,23 @@ func (loader *LineOrientedLoader) LoadFromFile(docWordFreqFile string) bool {
 			log.Printf("Failed to extract fields from line [%s]: %s", line, err)
 			continue
 		}
-		
+
 		if !docIdMap[docId] {
 			(*loader).docIds = append((*loader).docIds, docId)
 		}
-		
+
 		if !vocabMap[word] {
 			(*loader).vocab = append((*loader).vocab, word)
 		}
-		
+
 		docIdWordVal := docIdWord{docId, word}
 		if countVal, found := (*loader).count[docIdWordVal]; found == true {
-			log.Printf("Error, found duplicated definition of %v, old value is %v, new value is %v", 
-				docIdWordVal, countVal, count);
+			log.Printf("Error, found duplicated definition of %v, old value is %v, new value is %v",
+				docIdWordVal, countVal, count)
 		}
-		(*loader).count[docIdWordVal] = count;
+		(*loader).count[docIdWordVal] = count
 	}
-	
+
 	return true
 }
 

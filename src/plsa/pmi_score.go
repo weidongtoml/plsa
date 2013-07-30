@@ -1,9 +1,13 @@
+// Copyright 2013 Weidong Liang. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
 package plsa
 
 import (
+	"fmt"
 	"math"
 	"sort"
-	"fmt"
 )
 
 // WordFrequencyRetriever is an interface for retrieving single word probabilities and
@@ -32,7 +36,7 @@ func (s *PMIScorer) PMIScore(wordList []string) float64 {
 	}
 	sort.Float64s(scores)
 	numScores := len(scores)
-	if numScores % 2 == 0 {
+	if numScores%2 == 0 {
 		return scores[numScores/2-1] + scores[numWords/2]
 	} else {
 		return scores[numScores/2]
@@ -41,6 +45,6 @@ func (s *PMIScorer) PMIScore(wordList []string) float64 {
 
 // PointwiseMutualInformation calculates the pointwise mutual information of word1 and word2.
 func (s *PMIScorer) PointwiseMutualInformation(word1 string, word2 string) float64 {
-	p := s.WordCooccurenceProb(word1, word2)/(s.WordProb(word1) * s.WordProb(word2))
+	p := s.WordCooccurenceProb(word1, word2) / (s.WordProb(word1) * s.WordProb(word2))
 	return math.Log(p)
 }
