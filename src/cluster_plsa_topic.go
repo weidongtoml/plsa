@@ -5,9 +5,9 @@
 package main
 
 import (
+	"./kmean"
 	"flag"
 	"fmt"
-	"kmean"
 	"log"
 )
 
@@ -22,14 +22,34 @@ func main() {
 	var sampleSupplier kmean.PlsaSampleSupplier
 	err := sampleSupplier.Load(*corpus)
 	if err != nil {
-		log.Printf("Error: failed to load corpus file[%s]: %s", *corpus, err)
+		log.Printf("Error: failed to load corpus file[%s]: %s.\n", *corpus, err)
 	} else {
 		clusters := kmean.KMeanCluster(sampleSupplier, *numCluster)
+
+		// Output Result
 		for _, c := range clusters {
+			avg, stdev := c.PairwiseConsineSimStats()
+			fmt.Printf("Pairwise Consine Sim Stats:\nAvg:%f, stdev: %f\n", avg, stdev)
 			for _, m := range c.Members {
-				fmt.Printf("%v ", m)
+				fmt.Printf("%v\n", m)
 			}
 			fmt.Printf("\n..........................\n")
 		}
+
+		fmt.Printf("\nInter Cluster Consine Similarity:\nClusterA ClusterB AvgSim StdevSim\n")
+		num := len(clusters)
+		interAvg := float64(0)
+		for i := 0; i < num; i++ {
+			for j := i + 1; j < num; j++ {
+				avg, stdev := clusters[i].InterClusterConsineSimStats(&clusters[j])
+				if avg > 0 {
+					interAvg += avg
+					fmt.Printf("%d %d %f %f\n", i, j, avg, stdev)
+				}
+
+			}
+		}
+		fmt.Printf(".................................\n")
+		fmt.Printf("Inter Cluster Avg Sim: %f\n\n", interAvg/float64(num*(num-1)))
 	}
 }

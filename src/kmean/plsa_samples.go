@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log"
 	"math"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -18,29 +19,96 @@ type PlsaSample struct {
 	norm     float64
 }
 
+func AssertAsPlsaSample(c SampleContainer) *PlsaSample {
+	a, ok := c.(*PlsaSample)
+	if !ok {
+		panic(fmt.Sprintf("PlsaSample.Add(SampleContainer) expected parameter to be *PlsaSample but got %v", c))
+	}
+	return a
+}
+
 func (s *PlsaSample) String() string {
-	return fmt.Sprintf("%d", s.topicId)
+	str := fmt.Sprintf("TopicId: %d, Terms: ", s.topicId)
+	var r []string
+	for k, _ := range s.repTerms {
+		r = append(r, k)
+	}
+	sort.Strings(r)
+	for _, v := range r {
+		str += " " + v
+	}
+	return str
+}
+
+func (s *PlsaSample) Id() int {
+	return s.topicId
+}
+
+func (s *PlsaSample) Equals(c SampleContainer) bool {
+	a := AssertAsPlsaSample(c)
+	return s.topicId == a.topicId
+}
+
+func (s *PlsaSample) Zero() SampleContainer {
+	return SampleContainer(&PlsaSample{0, make(map[string]float64), 0})
+}
+
+func (s *PlsaSample) Add(c SampleContainer) {
+	a := AssertAsPlsaSample(c)
+	for k, v := range a.repTerms {
+		s.repTerms[k] += v
+	}
+}
+
+func (s *PlsaSample) ScalarMul(a float64) {
+	for k, _ := range s.repTerms {
+		s.repTerms[k] *= a
+	}
 }
 
 func (s *PlsaSample) Norm() float64 {
 	if s.norm == 0 {
 		n := float64(0)
 		for _, v := range s.repTerms {
-			n += v
+			n += v * v
 		}
 		s.norm = math.Sqrt(n)
 	}
 	return s.norm
 }
 
-func (s *PlsaSample) DistanceFrom(a *PlsaSample) float64 {
+func (s *PlsaSample) DistanceFrom(c SampleContainer) float64 {
+	a := AssertAsPlsaSample(c)
 	dist := float64(0)
+	// Parts that are common to both
 	for k, v := range s.repTerms {
 		if u, found := a.repTerms[k]; found {
 			dist += (v - u) * (v - u)
 		}
 	}
+	// Parts that present only in 1
+	for k, v := range s.repTerms {
+		if _, found := a.repTerms[k]; !found {
+			dist += v * v
+		}
+	}
+	for k, u := range a.repTerms {
+		if _, found := s.repTerms[k]; !found {
+			dist += u * u
+		}
+	}
 	return dist
+}
+
+func (s *PlsaSample) CosineSim(c SampleContainer) float64 {
+	a := AssertAsPlsaSample(c)
+	sDota := float64(0)
+	for k, v := range s.repTerms {
+		if u, found := a.repTerms[k]; found {
+			sDota += u * v
+		}
+	}
+	return sDota / (s.Norm() * a.Norm())
 }
 
 type PlsaSampleSupplier struct {
@@ -66,52 +134,25 @@ func (sp *PlsaSampleSupplier) Load(filename string) error {
 					log.Printf("Invalid field: %s %s", fields[i], fields[i+1])
 				}
 			}
+			//TODO(weidoliang): Add flag to determine the postprocess
+			totalP := float64(0)
+			for _, p := range repTerms {
+				totalP += p
+			}
+			for k, _ := range repTerms {
+				repTerms[k] /= totalP
+			}
+
 			sp.samples = append(sp.samples, PlsaSample{int(topicId), repTerms, float64(0)})
 		}
 		return true, nil
 	})
 }
 
-func (sp *PlsaSampleSupplier) SampleSize() int {
+func (sp PlsaSampleSupplier) SampleSize() int {
 	return len(sp.samples)
 }
 
-func (sp *PlsaSampleSupplier) Sample(i int) PlsaSample {
-	return sp.samples[i]
-}
-
-func (sp *PlsaSampleSupplier) Mean(s []PlsaSample) PlsaSample {
-	var sample PlsaSample
-	for _, v := range s {
-		for k, u := range v.repTerms {
-			sample.repTerms[k] += u
-		}
-	}
-	for k, _ := range sample.repTerms {
-		sample.repTerms[k] /= float64(len(s))
-	}
-	return sample
-}
-
-func (sp *PlsaSampleSupplier) Equals(aC []SampleContainer, bC []SampleContainer) bool {
-	a := []PlsaSample(aC)
-
-	b := []PlsaSample(bC)
-	return contains(a, b) && contains(b, a)
-
-}
-
-func contains(a []PlsaSample, b []PlsaSample) bool {
-	for _, v := range a {
-		found := false
-		for _, u := range b {
-			if v.topicId == u.topicId {
-				found = true
-			}
-		}
-		if !found {
-			return false
-		}
-	}
-	return true
+func (sp PlsaSampleSupplier) Sample(i int) SampleContainer {
+	return SampleContainer(&sp.samples[i])
 }

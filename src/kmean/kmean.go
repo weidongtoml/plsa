@@ -23,14 +23,25 @@
 package kmean
 
 import (
+	"log"
 	"math"
 	"math/rand"
+	"time"
 )
+
+func init() {
+	rand.Seed(time.Now().Unix())
+}
 
 // Interface SampleContainer represents one data sample.
 type SampleContainer interface {
-	String() string
+	Id() int
+	Equals(SampleContainer) bool
 	DistanceFrom(SampleContainer) float64
+	CosineSim(SampleContainer) float64
+	Add(SampleContainer)
+	ScalarMul(float64)
+	Zero() SampleContainer
 }
 
 // Interface SampleSupplier specifies methods for accessing data samples and
@@ -38,14 +49,6 @@ type SampleContainer interface {
 type SampleSupplier interface {
 	SampleSize() int
 	Sample(int) SampleContainer
-	Mean([]SampleContainer) SampleContainer
-	Equals([]SampleContainer, []SampleContainer) bool
-}
-
-// Representation of a cluster.
-type Cluster struct {
-	Centroid SampleContainer
-	Members  []SampleContainer
 }
 
 type indexDist struct {
@@ -61,64 +64,102 @@ func KMeanCluster(s SampleSupplier, k int) []Cluster {
 	return kMean(s, clusters)
 }
 
-func kMeanPlusPlus(s SampleSupplier, k int) []Cluster {
-	var clusters []Cluster
-	ind := rand.Int() % s.SampleSize()
-	clusters = append(clusters, Cluster{s.Sample(ind), nil})
-	indList := map[int]bool{ind: true}
-	for i := 1; i < k; i++ {
-		var indexD []indexDist
-		for sIndex := 0; sIndex < s.SampleSize(); sIndex++ {
-			if !indList[sIndex] {
-				sample := s.Sample(sIndex)
-				shortestDist := math.MaxFloat64
-				for _, c := range clusters {
-					d := sample.DistanceFrom(c.Centroid)
-					if d < shortestDist {
-						shortestDist = d
-					}
-				}
-				indexD = append(indexD, indexDist{sIndex, shortestDist * shortestDist})
-			}
-		}
-		for j, v := range indexD[1:] {
-			v.dist += indexD[j-1].dist
-		}
-		maxDist := indexD[len(indexD)-1].dist
-		newProb := rand.Float64()
-		for j, v := range indexD {
-			if v.dist/maxDist > newProb {
-				clusters = append(clusters, Cluster{s.Sample(j), nil})
-			}
+func normalizeIndexDist(indexD []indexDist) []indexDist {
+	for j, _ := range indexD {
+		if j > 0 {
+			indexD[j].dist += indexD[j-1].dist
 		}
 	}
+	maxDist := indexD[len(indexD)-1].dist
+	for j, _ := range indexD {
+		indexD[j].dist /= maxDist
+	}
+	return indexD
+}
+
+func kMeanPlusPlus(s SampleSupplier, k int) []Cluster {
+	var clusters []Cluster
+	indList := make(map[int]bool)
+	var ind int
+	for i := 1; i <= k; i++ {
+		if i == 1 {
+			ind = rand.Int() % s.SampleSize()
+		} else {
+			var indexD []indexDist
+			for sIndex := 0; sIndex < s.SampleSize(); sIndex++ {
+				if indList[sIndex] == false {
+					sample := s.Sample(sIndex)
+					shortestDist := math.MaxFloat64
+					for _, c := range clusters {
+						d := sample.DistanceFrom(c.Centroid)
+						if d < shortestDist {
+							shortestDist = d
+						}
+					}
+					indexD = append(indexD, indexDist{sIndex, shortestDist * shortestDist})
+				}
+			}
+			indexD = normalizeIndexDist(indexD)
+			newProb := rand.Float64()
+			for _, v := range indexD {
+				if v.dist > newProb {
+					ind = v.index
+					break
+				}
+			}
+		}
+		clusters = append(clusters, Cluster{i, s.Sample(ind), nil})
+		indList[ind] = true
+
+		log.Printf("kmean++: %dth centroid: %d\n", i, ind)
+	}
+
+	log.Printf("Inital Centeroids used are: \n")
+	for _, c := range clusters {
+		log.Printf("%v\n", c.Centroid)
+	}
+	log.Printf("\n")
+
 	return clusters
 }
 
+func nearestCentroid(sample SampleContainer, clusters []Cluster) int {
+	index := 0
+	dist := math.MaxFloat64
+	for j, c := range clusters {
+		if cDist := sample.DistanceFrom(c.Centroid); cDist < dist {
+			dist = cDist
+			index = j
+		}
+	}
+	return index
+}
+
 func kMean(s SampleSupplier, clusters []Cluster) []Cluster {
+	iter := 0
 	for {
+		log.Printf("Iteration: %v\n", iter)
 		newClusters := cloneClusterCentroids(clusters)
 		//1. Assignment
 		for i := 0; i < s.SampleSize(); i++ {
 			sample := s.Sample(i)
-			index := 0
-			dist := math.MaxFloat64
-			for j, c := range clusters {
-				if cDist := sample.DistanceFrom(c.Centroid); dist < cDist {
-					dist = cDist
-					index = j
-				}
-			}
+			index := nearestCentroid(sample, clusters)
 			newClusters[index].add(sample)
 		}
 		//2. update
-		for _, c := range newClusters {
-			c.Centroid = s.Mean(c.Members)
+		for i, _ := range newClusters {
+			newClusters[i].RecalcCentroid()
 		}
+
+		log.Printf("Clusters: \n")
+		for _, c := range clusters {
+			log.Printf("%s\n", c.String())
+		}
+
 		//Check for convergence
 		clustersAreEqual := true
 		for i, _ := range newClusters {
-			if !s.Equals(newClusters[i].Members, clusters[i].Members) {
+			if !newClusters[i].Equals(&clusters[i]) {
 				clustersAreEqual = false
 				break
 			}
@@ -128,6 +169,7 @@ func kMean(s SampleSupplier, clusters []Cluster) []Cluster {
 		} else {
 			clusters = newClusters
 		}
+		iter++
 	}
 	return clusters
 }
@@ -135,7 +177,7 @@ func kMean(s SampleSupplier, clusters []Cluster) []Cluster {
 func cloneClusterCentroids(clusters []Cluster) []Cluster {
 	var newCluster []Cluster
 	for _, c := range clusters {
-		newCluster = append(newCluster, Cluster{c.Centroid, nil})
+		newCluster = append(newCluster, Cluster{c.Id, c.Centroid, nil})
 	}
 	return newCluster
 }
