@@ -38,15 +38,46 @@ func (s *PlsaSample) Normalize() {
 	s.norm = 1.0
 }
 
+type termWeightT struct {
+	term   string
+	weight float64
+}
+
+type termWeightsT []*termWeightT
+
+func (t termWeightsT) Len() int {
+	return len(t)
+}
+
+func (t termWeightsT) Swap(i, j int) {
+	t[i], t[j] = t[j], t[i]
+}
+
+type byName struct {
+	termWeightsT
+}
+
+func (s byName) Less(i, j int) bool {
+	return s.termWeightsT[i].term < s.termWeightsT[j].term
+}
+
+type byWeight struct {
+	termWeightsT
+}
+
+func (s byWeight) Less(i, j int) bool {
+	return s.termWeightsT[i].weight > s.termWeightsT[j].weight
+}
+
 func (s *PlsaSample) String() string {
 	str := fmt.Sprintf("TopicId: %d, Terms: ", s.topicId)
-	var r []string
-	for k, _ := range s.repTerms {
-		r = append(r, k)
+	var r []*termWeightT
+	for k, w := range s.repTerms {
+		r = append(r, &termWeightT{k, w})
 	}
-	sort.Strings(r)
+	sort.Sort(byWeight{r})
 	for _, v := range r {
-		str += " " + v
+		str += fmt.Sprintf(" %s(%f)", v.term, v.weight)
 	}
 	return str
 }

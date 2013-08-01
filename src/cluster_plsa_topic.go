@@ -29,27 +29,30 @@ func main() {
 		// Output Result
 		for _, c := range clusters {
 			avg, stdev := c.PairwiseConsineSimStats()
+			fmt.Printf("Cluster Quality: %f\n", c.Quality())
+			fmt.Printf("Cluster size: %d\n", len(c.Members))
 			fmt.Printf("Pairwise Consine Sim Stats:\nAvg:%f, stdev: %f\n", avg, stdev)
 			for _, m := range c.Members {
 				fmt.Printf("%v\n", m)
 			}
 			fmt.Printf("\n..........................\n")
 		}
+		/*
+			fmt.Printf("\nInter Cluster Consine Similarity:\nClusterA ClusterB AvgSim StdevSim\n")
+			num := len(clusters)
+			interAvg := float64(0)
+			for i := 0; i < num; i++ {
+				for j := i + 1; j < num; j++ {
+					avg, stdev := clusters[i].InterClusterConsineSimStats(&clusters[j])
+					if avg > 0 {
+						interAvg += avg
+						fmt.Printf("%d %d %f %f\n", i, j, avg, stdev)
+					}
 
-		fmt.Printf("\nInter Cluster Consine Similarity:\nClusterA ClusterB AvgSim StdevSim\n")
-		num := len(clusters)
-		interAvg := float64(0)
-		for i := 0; i < num; i++ {
-			for j := i + 1; j < num; j++ {
-				avg, stdev := clusters[i].InterClusterConsineSimStats(&clusters[j])
-				if avg > 0 {
-					interAvg += avg
-					fmt.Printf("%d %d %f %f\n", i, j, avg, stdev)
 				}
-
 			}
-		}
-		fmt.Printf(".................................\n")
-		fmt.Printf("Inter Cluster Avg Sim: %f\n\n", interAvg/float64(num*(num-1)))
+			fmt.Printf(".................................\n")
+			fmt.Printf("Inter Cluster Avg Sim: %f\n\n", interAvg/float64(num*(num-1)))
+		*/
 	}
 }

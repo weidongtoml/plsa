@@ -61,7 +61,7 @@ type indexDist struct {
 // Function KMeanCluster clusters the given sample into k clusters.
 func KMeanCluster(s SampleSupplier, k int) []Cluster {
 	//Use kmean++ to select the k initial centers.
-	clusters := kMeanPlusPlus(s, k)
+	clusters := kMeanPlusPlus(s, k, false)
 	// Use kmean to adjust the clusters till no re-assignment has been made.
 	return kMean(s, clusters, false)
 }
@@ -74,7 +74,7 @@ func SphericalKMeanCluster(s SampleSupplier, k int) []Cluster {
 		s.Sample(i).Normalize()
 	}
 	//Use kmean++ to select the k initial centers.
-	clusters := kMeanPlusPlus(s, k)
+	clusters := kMeanPlusPlus(s, k, false)
 	return kMean(s, clusters, true)
 }
 
@@ -91,7 +91,7 @@ func normalizeIndexDist(indexD []indexDist) []indexDist {
 	return indexD
 }
 
-func kMeanPlusPlus(s SampleSupplier, k int) []Cluster {
+func kMeanPlusPlus(s SampleSupplier, k int, isSpherical bool) []Cluster {
 	var clusters []Cluster
 	indList := make(map[int]bool)
 	var ind int
@@ -105,7 +105,12 @@ func kMeanPlusPlus(s SampleSupplier, k int) []Cluster {
 					sample := s.Sample(sIndex)
 					shortestDist := math.MaxFloat64
 					for _, c := range clusters {
-						d := sample.DistanceFrom(c.Centroid)
+						var d float64
+						if isSpherical {
+							d = 1 - sample.CosineSim(c.Centroid)
+						} else {
+							d = sample.DistanceFrom(c.Centroid)
+						}
 						if d < shortestDist {
 							shortestDist = d
 						}
@@ -159,6 +164,7 @@ func nearestCentroid(sample SampleContainer, clusters []Cluster, isSpherical boo
 
 func kMean(s SampleSupplier, clusters []Cluster, isSpherical bool) []Cluster {
 	iter := 0
+	prevQ := float64(0)
 	for {
 		log.Printf("Iteration: %v\n", iter)
 		newClusters := cloneClusterCentroids(clusters)
@@ -177,6 +183,10 @@ func kMean(s SampleSupplier, clusters []Cluster, isSpherical bool) []Cluster {
 		for _, c := range clusters {
 			log.Printf("%s\n", c.String())
 		}
+		curQ := SkClusterQuality(clusters)
+		log.Printf("Cluster quality: %f/(prev %f), empty clusters: %d\n",
+			curQ, prevQ, NumberOfEmptyClusters(clusters))
+		prevQ = curQ
 
 		//Check for convergence
 		clustersAreEqual := true

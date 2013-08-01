@@ -16,6 +16,17 @@ type Cluster struct {
 	Members  []SampleContainer
 }
 
+func (c *Cluster) Quality() float64 {
+	q := float64(0)
+	if len(c.Members) > 0 {
+		for _, m := range c.Members {
+			q += c.Centroid.CosineSim(m)
+		}
+		q /= float64(len(c.Members))
+	}
+	return q
+}
+
 func (c *Cluster) String() string {
 	str := fmt.Sprintf("Id: %d, Members:", c.Id)
 	for _, m := range c.Members {
