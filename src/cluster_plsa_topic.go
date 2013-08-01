@@ -24,7 +24,7 @@ func main() {
 	if err != nil {
 		log.Printf("Error: failed to load corpus file[%s]: %s.\n", *corpus, err)
 	} else {
-		clusters := kmean.KMeanCluster(sampleSupplier, *numCluster)
+		clusters := kmean.SphericalKMeanCluster(sampleSupplier, *numCluster)
 
 		// Output Result
 		for _, c := range clusters {

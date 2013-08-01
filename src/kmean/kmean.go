@@ -39,9 +39,11 @@ type SampleContainer interface {
 	Equals(SampleContainer) bool
 	DistanceFrom(SampleContainer) float64
 	CosineSim(SampleContainer) float64
+	Norm() float64
 	Add(SampleContainer)
 	ScalarMul(float64)
 	Zero() SampleContainer
+	Normalize()
 }
 
 // Interface SampleSupplier specifies methods for accessing data samples and
@@ -61,7 +63,19 @@ func KMeanCluster(s SampleSupplier, k int) []Cluster {
 	//Use kmean++ to select the k initial centers.
 	clusters := kMeanPlusPlus(s, k)
 	// Use kmean to adjust the clusters till no re-assignment has been made.
-	return kMean(s, clusters)
+	return kMean(s, clusters, false)
+}
+
+// Function SphericalKMeanCluster clusters the given sample into k clusters using
+// the spherical kmeans algorithm
+func SphericalKMeanCluster(s SampleSupplier, k int) []Cluster {
+	// Normalize all samples
+	for i := 0; i < s.SampleSize(); i++ {
+		s.Sample(i).Normalize()
+	}
+	//Use kmean++ to select the k initial centers.
+	clusters := kMeanPlusPlus(s, k)
+	return kMean(s, clusters, true)
 }
 
 func normalizeIndexDist(indexD []indexDist) []indexDist {
@@ -123,19 +137,27 @@ func kMeanPlusPlus(s SampleSupplier, k int) []Cluster {
 	return clusters
 }
 
-func nearestCentroid(sample SampleContainer, clusters []Cluster) int {
+func nearestCentroid(sample SampleContainer, clusters []Cluster, isSpherical bool) int {
 	index := 0
 	dist := math.MaxFloat64
+	sim := float64(0)
 	for j, c := range clusters {
-		if cDist := sample.DistanceFrom(c.Centroid); cDist < dist {
-			dist = cDist
-			index = j
+		if isSpherical {
+			if cSim := sample.CosineSim(c.Centroid); sim < cSim {
+				sim = cSim
+				index = j
+			}
+		} else {
+			if cDist := sample.DistanceFrom(c.Centroid); cDist < dist {
+				dist = cDist
+				index = j
+			}
 		}
 	}
 	return index
 }
 
-func kMean(s SampleSupplier, clusters []Cluster) []Cluster {
+func kMean(s SampleSupplier, clusters []Cluster, isSpherical bool) []Cluster {
 	iter := 0
 	for {
 		log.Printf("Iteration: %v\n", iter)
@@ -143,12 +165,12 @@ func kMean(s SampleSupplier, clusters []Cluster) []Cluster {
 		//1. Assignment
 		for i := 0; i < s.SampleSize(); i++ {
 			sample := s.Sample(i)
-			index := nearestCentroid(sample, clusters)
+			index := nearestCentroid(sample, clusters, isSpherical)
 			newClusters[index].add(sample)
 		}
 		//2. update
 		for i, _ := range newClusters {
-			newClusters[i].RecalcCentroid()
+			newClusters[i].RecalcCentroid(isSpherical)
 		}
 
 		log.Printf("Clusters: \n")

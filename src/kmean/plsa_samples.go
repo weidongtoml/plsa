@@ -27,6 +27,17 @@ func AssertAsPlsaSample(c SampleContainer) *PlsaSample {
 	return a
 }
 
+func (s *PlsaSample) Normalize() {
+	totalP := float64(0)
+	for _, p := range s.repTerms {
+		totalP += p
+	}
+	for k, _ := range s.repTerms {
+		s.repTerms[k] /= totalP
+	}
+	s.norm = 1.0
+}
+
 func (s *PlsaSample) String() string {
 	str := fmt.Sprintf("TopicId: %d, Terms: ", s.topicId)
 	var r []string
@@ -134,15 +145,6 @@ func (sp *PlsaSampleSupplier) Load(filename string) error {
 					log.Printf("Invalid field: %s %s", fields[i], fields[i+1])
 				}
 			}
-			//TODO(weidoliang): Add flag to determine the postprocess
-			totalP := float64(0)
-			for _, p := range repTerms {
-				totalP += p
-			}
-			for k, _ := range repTerms {
-				repTerms[k] /= totalP
-			}
-
 			sp.samples = append(sp.samples, PlsaSample{int(topicId), repTerms, float64(0)})
 		}
 		return true, nil

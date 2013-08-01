@@ -43,12 +43,15 @@ func (c *Cluster) Contains(b *Cluster) bool {
 	return true
 }
 
-func (c *Cluster) RecalcCentroid() {
+func (c *Cluster) RecalcCentroid(isSperical bool) {
 	z := c.Centroid.Zero()
 	for _, m := range c.Members {
 		z.Add(m)
 	}
 	z.ScalarMul(float64(1) / float64(len(c.Members)))
+	if isSperical {
+		z.ScalarMul(float64(1) / z.Norm())
+	}
 	c.Centroid = z
 }
 

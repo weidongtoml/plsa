@@ -69,6 +69,11 @@ func TestPlsaSample(t *testing.T) {
 	if !Float64Equals(c1.CosineSim(c2), expectedSim) {
 		t.Errorf("Expected consine sim to be %f, but got %f.", expectedSim, c1.CosineSim(c2))
 	}
+	// Test for normalization
+	c1.Normalize()
+	if !Float64Equals(c1.Norm(), 1.0) {
+		t.Errorf("Expected normalized sample to have norm of 1.0 but got %f.", c1.Norm())
+	}
 }
 
 func TestPlsaSampleSupplier(t *testing.T) {
@@ -104,7 +109,7 @@ func TestPlsaSampleSupplier(t *testing.T) {
 			!Float64Equals(s0.repTerms["百合"], 0.3) ||
 			len(s0.repTerms) != 3 {
 			//TODO(weidoliang): fix this
-			//t.Errorf("Sample 0 did not load correctly: %v.", s0)
+			t.Errorf("Sample 0 did not load correctly: %v.", s0)
 		}
 		c1 := supplier.Sample(1)
 		s1 := AssertAsPlsaSample(c1)
@@ -112,7 +117,7 @@ func TestPlsaSampleSupplier(t *testing.T) {
 			!Float64Equals(s1.repTerms["动画"], 0.3) ||
 			len(s1.repTerms) != 2 {
 			//TODO(weidoliang): fix this
-			//t.Errorf("Sample 0 did not load correctly: %v.", s1)
+			t.Errorf("Sample 0 did not load correctly: %v.", s1)
 		}
 	}
 }
